@@ -52,6 +52,10 @@ GUEST_USER = "_guest"
 GLOBAL_ROLES = "_global"
 
 
+class IndexDoesNotExist(ValueError):
+    pass
+
+
 def list_all_indices(exclude_system_index=True) -> List[str]:
     """
     List all indices on the connected elastic cluster.
@@ -67,7 +71,7 @@ def list_known_indices(email: str = None) -> Set[str]:
     List all known indices, e.g. indices registered in this amcat4 instance
     :param email: if given, only list indices visible to this user
     """
-    if email is None or get_global_role(email) == Role.ADMIN:
+    if email is None or get_global_role(email) == Role.ADMIN or get_settings().auth == "no_auth":
         query = {"query": {"term": {"email": GUEST_USER}}}
     else:
         # Either user has a role in the index, or index has a non-empty guest role
@@ -150,7 +154,7 @@ def set_global_role(email: str, role: Role):
 
 def set_guest_role(index: str, role: Role):
     """
-    Set the guest role for this index
+    Set the guest role for this index. Set to Role.NONE to disallow guest access
     """
     set_role(index=index, email=GUEST_USER, role=role)
 
@@ -173,11 +177,9 @@ def remove_global_role(email: str):
     remove_role(index=GLOBAL_ROLES, email=email)
 
 
-def get_role(index: str, email: str) -> Optional[Role]:
+def _get_role(index: str, email: str) -> Optional[Role]:
     """
-    Retrieve the role of this user on this index
-
-    :returns: a Role object, or None if the user has no role
+    Retrieve the role of this user on this index (or None if no role exists)
     """
     try:
         doc = es().get(index=get_settings().system_index, id=f"{index}|{email}")
@@ -187,15 +189,29 @@ def get_role(index: str, email: str) -> Optional[Role]:
     return Role[role.upper()]
 
 
-def get_guest_role(index: str) -> Role:
+def get_role(index: str, email: str) -> Optional[Role]:
     """
-    Return the guest role for this index, raising a ValueError if the index does not exist
-    :returns: a Role object, possibly Role.NONE
+    Retrieve the role of this user on this index, or the guest role if user has no role
+    Raises a ValueError if the index does not exist
+    :returns: a Role object, or Role.NONE if the user has no role and no guest role exists
     """
-    role = get_role(index=index, email=GUEST_USER)
+    role = _get_role(index, email)
     if role is None:
-        raise ValueError(f"Index {index} does not exist")
+        if index == GLOBAL_ROLES:
+            return None
+        return get_guest_role(index)
     return role
+
+
+def get_guest_role(index: str) -> Optional[Role]:
+    """
+    Return the guest role for this index, raising a IndexDoesNotExist if the index does not exist
+    :returns: a Role object, or None if global role was NONE
+    """
+    role = _get_role(index=index, email=GUEST_USER)
+    if role is None:
+        raise IndexDoesNotExist(f"Index {index} does not exist")
+    return None if role == Role.NONE else role
 
 
 def get_global_role(email: str) -> Optional[Role]:

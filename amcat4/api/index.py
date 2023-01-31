@@ -12,7 +12,7 @@ from amcat4 import elastic, index
 from amcat4.api.auth import authenticated_user, authenticated_writer, check_role
 from amcat4.api.common import py2dict
 from amcat4.index import Role, refresh, set_role, get_role, get_guest_role, list_known_indices, set_guest_role, \
-    get_global_role, list_users, remove_role
+    get_global_role, list_users, remove_role, IndexDoesNotExist
 
 app_index = APIRouter(
     prefix="/index",
@@ -28,7 +28,7 @@ def index_list(current_user: str = Depends(authenticated_user)):
 
     Returns a list of dicts containing name, role, and guest attributes
     """
-    return [{"name": index} for index in list_known_indices(current_user)]
+    return [{"name": ix} for ix in list_known_indices(current_user)]
 
 
 class NewIndex(BaseModel):
@@ -76,14 +76,14 @@ def modify_index(ix: str, data: ChangeIndex, user: str = Depends(authenticated_u
 @app_index.get("/{ix}")
 def view_index(ix: str, user: str = Depends(authenticated_user)):
     """
-    Modify the index.
-
-    Currently only supports modifying guest_role
-    POST data should be json containing the changed values (i.e. guest_role)
+    View the index.
     """
-    check_role(user, Role.METAREADER, ix)
-    guest_role = get_guest_role(ix)
-    return {"index": ix, "guest_role": guest_role.name}
+    try:
+        check_role(user, Role.METAREADER, ix, required_global_role=Role.WRITER)
+        guest_role = get_guest_role(ix)
+    except IndexDoesNotExist:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Index {ix} does not exist")
+    return {"index": ix, "guest_role": "NONE" if guest_role is None else guest_role.name}
 
 
 @app_index.delete("/{ix}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
@@ -171,12 +171,13 @@ def delete_document(ix: str, docid: str, user: str = Depends(authenticated_user)
 
 
 @app_index.get("/{ix}/fields")
-def get_fields(ix: str, _=Depends(authenticated_user)):
+def get_fields(ix: str, user=Depends(authenticated_user)):
     """
     Get the fields (columns) used in this index.
 
     Returns a json array of {name, type} objects
     """
+    check_role(user, Role.METAREADER, ix)
     indices = ix.split(',')
     return elastic.get_fields(indices)
 

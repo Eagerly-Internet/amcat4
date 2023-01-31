@@ -15,9 +15,8 @@ app_info = APIRouter(
 @app_info.get("/")
 def index(request: Request):
     host = get_settings().host
-
     es_alive = elastic.ping()
-    has_admin = bool(get_settings().admin_password)
+    auth = get_settings().auth
     has_admin_email = bool(get_settings().admin_email)
     middlecat_url = get_settings().middlecat_url
     middlecat_alive = False
