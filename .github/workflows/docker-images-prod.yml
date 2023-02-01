@@ -1,0 +1,23 @@
+name: Build and Push Docker Image Production
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Build Docker Image
+      run: |
+        docker build -t nlpo-amcat4 .
+        echo "${{ secrets.CONTAINER_REGISTRY_PASSWORD }}" | docker login ghcr.io -u "${{ secrets.CONTAINER_REGISTRY_USERNAME }}" --password-stdin
+
+    - name: Push Docker Image
+      run: |
+        docker tag amcat4 ghcr.io/eagerly-internet/amcat4:latest
+        docker push ghcr.io/eagerly-internet/amcat4:latest
