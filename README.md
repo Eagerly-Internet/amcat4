@@ -1,6 +1,9 @@
 [![Unit tests](https://github.com/ccs-amsterdam/amcat4/actions/workflows/unittests.yml/badge.svg)](https://github.com/ccs-amsterdam/amcat4/actions/workflows/unittests.yml)
 [![Flake8 & Mypy linting](https://github.com/ccs-amsterdam/amcat4/actions/workflows/linting.yml/badge.svg)](https://github.com/ccs-amsterdam/amcat4/actions/workflows/linting.yml)
-[![pip version](https://badge.fury.io/py/amcat4.svg)](https://badge.fury.io/py/amcat4)
+[![pip version](https://badge.fury.io/py/amcat4.svg)](https://pypi.org/project/amcat4/)
+![Python](https://img.shields.io/badge/python-3.8,3.9,3.10-blue.svg)
+![Elasticsearch](https://img.shields.io/badge/elasticsearch-7.17,8.6-green)
+
 
 # AmCAT4
 
@@ -14,8 +17,10 @@ See also the [API Documentation](apidoc.md)
 AmCAT requires an elasticsearch instance. The easiest way to run one for development is using docker:
 
 ```
-sudo docker run --name elastic7 -dp 9200:9200 -p 9300:9300 -e ES_JAVA_OPTS="-Xms1g -Xmx1g" -e "discovery.type=single-node" docker.elastic.co/elasticsearch/elasticsearch:7.17.2
+sudo docker run --name elastic8 -dp 9200:9200 -e "xpack.security.enabled=false" -e ES_JAVA_OPTS="-Xms1g -Xmx1g" -e "discovery.type=single-node" docker.elastic.co/elasticsearch/elasticsearch:8.6.1
 ```
+
+Please note that this docker is completely unsecured, so this should be configured differently in production and the used port 9200 should probably not be exposed to the Internet. 
 
 ## Installing from source
 
@@ -28,18 +33,11 @@ python3 -m venv env
 env/bin/pip install -e .[dev]
 ```
 
-Before being able to do anything useful through the API, you will need to run the following command to create a .env file that contains environment variables and generates a random secret for signing the JSON Web Tokens (so also make sure to keep this file secret). Here you also need to provide the email address of the admin user.
-
-```
-env/bin/python amcat4 create-env admin@something.com
-```
-
 Now, you can run the backend server:
 
 ```
-env/bin/python -m amcat4 run
+env/bin/amcat4 run
 ```
-
 This will run the API at (default) locahost port 5000.
 To see documentation, visit http://localhost:5000/docs (Swagger, which comes with interactive "try now" mode) or http://localhost:5000/redoc (redoc, looks somewhat nicer)
 
@@ -47,10 +45,21 @@ Of course, this new instance is still completely empty, so there is little to se
 If you want to add some test data, you can use the `create-test-data` command, which will upload some State of the Union speeches:
 
 ```
-env/bin/python -m amcat4 create-test-index
+env/bin/amcat4 create-test-index
 ```
 
 (Note: if you get an SSL error, especially on a mac, try running `env/bin/pip install -U certifi`
+
+## Security and configuration
+
+By default, the API is unsecured (no client authentication is necessary) and it expects an elasticsearch instance at localhost:9200. 
+
+AmCAT reads its configuration from environment variables, so you can either pass them directly or by creating a .env file. 
+You can modify the [example .env file](.env.example) or interactively create the .env file using:
+
+```
+env/bin/amcat4 config
+```
 
 ## Using AmCAT
 

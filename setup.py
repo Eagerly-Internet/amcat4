@@ -4,7 +4,7 @@ from distutils.core import setup
 
 setup(
     name="amcat4",
-    version="0.10",
+    version="4.0.10",
     description="API for AmCAT4 Text Analysis",
     author="Wouter van Atteveldt",
     author_email="wouter@vanatteveldt.com",
@@ -19,14 +19,13 @@ setup(
     ],
     install_requires=[
         "fastapi[all]",
-        "elasticsearch~=7.16",
+        "elasticsearch~=8.6",
         "python-multipart",
-        "bcrypt",
-        "peewee",
         "python-dotenv",
         "requests",
         "authlib",
         "pydantic[email]",
+        "pydantic-settings",
         'uvicorn',
         'requests'
     ],
@@ -35,6 +34,13 @@ setup(
             'pytest',
             'mypy',
             'flake8',
+            'responses',
+            'pre-commit',
+        ]
+    },
+    entry_points={
+        'console_scripts': [
+            'amcat4 = amcat4.__main__:main'
         ]
     },
 )

@@ -4,166 +4,105 @@ User/Account and authentication endpoints.
 AmCAT4 can use either Basic or Token-based authentication.
 A client can request a token with basic authentication and store that token for future requests.
 """
-import logging
-from typing import Literal, Optional, Union
+from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException, status, Response
 from fastapi.params import Depends
-from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from pydantic.networks import EmailStr
 
-from amcat4 import auth
-from amcat4.api.auth import authenticated_user, authenticated_writer, check_role
-from amcat4.api.common import _index
-from amcat4.auth import Role, User, hash_password
+from amcat4 import index
+from amcat4.api.auth import authenticated_user, authenticated_admin, check_global_role
+from amcat4.config import get_settings, validate_settings
+from amcat4.index import Role, set_global_role, get_global_role
 
 app_users = APIRouter(
-
     tags=["users"])
-
-
-class Username(EmailStr):
-    """Subclass of EmailStr to allow 'admin' username."""
-
-    # WVA: Not sure we should actually keep admin?
-    @classmethod
-    def validate(cls, value: Union[str]) -> str:
-        """Check for valid email or 'admin'."""
-        if value == "admin":
-            return "admin"
-        return super().validate(value)
 
 
 ROLE = Literal["ADMIN", "WRITER", "admin", "writer"]
 
 
 class UserForm(BaseModel):
-    """Form to create a new user."""
-
-    email: Username
-    password: str
+    """Form to create a new global user."""
+    email: EmailStr
     global_role: Optional[ROLE]
-    index_access: Optional[str]
 
 
 class ChangeUserForm(BaseModel):
-    """Form to change an existing user."""
-
-    email: Optional[Username]
-    password: Optional[str]
+    """Form to change a global user."""
     global_role: Optional[ROLE]
 
 
 @app_users.post("/users/", status_code=status.HTTP_201_CREATED)
-def create_user(new_user: UserForm, current_user: User = Depends(authenticated_writer)):
+def create_user(new_user: UserForm, _=Depends(authenticated_admin)):
     """Create a new user."""
-    if User.select().where(User.email == new_user.email).exists():
+    if get_global_role(new_user.email) is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"User {new_user.email} already exists")
-    role = Role[new_user.global_role.upper()] if new_user.global_role else None
-    if role == Role.ADMIN:
-        check_role(current_user, Role.ADMIN)
-    u = auth.create_user(email=new_user.email, password=new_user.password, global_role=role)
-    if new_user.index_access:
-        _index(new_user.index_access).set_role(u, role or Role.READER)
-    return {"id": u.id, "email": u.email}
+    role = Role[new_user.global_role.upper()] if new_user.global_role else Role.NONE
+    set_global_role(email=new_user.email, role=role)
+    return {"email": new_user.email, "global_role": role.value}
 
 
 @app_users.get("/users/me")
-def get_current_user(current_user: User = Depends(authenticated_user)):
+def get_current_user(current_user: str = Depends(authenticated_user)):
     """View the current user."""
-    return {"email": current_user.email, "global_role": current_user.role and current_user.role.name}
+    return _get_user(current_user, current_user)
 
 
 @app_users.get("/users/{email}")
-def get_user(email: Username, current_user: User = Depends(authenticated_user)):
+def get_user(email: EmailStr, current_user: str = Depends(authenticated_user)):
     """
     View a specified current user.
 
     Users can view themselves, writer can view others
     """
-    if current_user.email != email:
-        check_role(current_user, Role.WRITER)
-    try:
-        u = User.get(User.email == email)
-        return {"email": u.email, "global_role": u.role and u.role.name}
-    except User.DoesNotExist:
+    return _get_user(email, current_user)
+
+
+def _get_user(email, current_user):
+    if current_user != email:
+        check_global_role(current_user, Role.WRITER)
+    global_role = get_global_role(email)
+    if email in ("admin", "guest") or global_role is None:
         raise HTTPException(404, detail=f"User {email} unknown")
+    else:
+        return {"email": email, "global_role": global_role.name}
 
 
-@app_users.get("/users", dependencies=[Depends(authenticated_writer)])
-def list_users():
-    """List all users."""
-    result = []
-    res1 = [dict(user=u.email, role=u.global_role) for u in User.select()]
-    for entry in res1:
-        roles = list(User.get(User.email == entry['user']).indices().items())
-        if roles:
-            for ix, role in roles:
-                result.append(dict(user=entry['user'], index=ix.name, role=role.name))
-        else:
-            result.append(dict(user=entry['user'], index=None, role=None))
-    return result
+@app_users.get("/users", dependencies=[Depends(authenticated_admin)])
+def list_global_users():
+    """List all global users"""
+    return [{'email': email, 'global_role': role.name} for (email, role) in index.list_global_users()]
 
 
 @app_users.delete("/users/{email}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
-def delete_user(email: Username, current_user: User = Depends(authenticated_user)):
+def delete_user(email: EmailStr, current_user: str = Depends(authenticated_user)):
     """
     Delete the given user.
 
-    Users can delete themselves, admin can delete everyone, and writer can delete non-admin
+    Users can delete themselves and admin can delete everyone
     """
-    if current_user.email != email:
-        check_role(current_user, Role.WRITER)
-    try:
-        u = User.get(User.email == email)
-    except User.DoesNotExist:
-        raise HTTPException(status_code=404, detail=f"User {email} does not exist")
-    if u.role == Role.ADMIN:
-        check_role(current_user, Role.ADMIN)
-    u.delete_instance()
+    if current_user != email:
+        check_global_role(current_user, Role.ADMIN)
+    index.delete_user(email)
 
 
 @app_users.put("/users/{email}")
-def modify_user(email: Username, data: ChangeUserForm, current_user: User = Depends(authenticated_user)):
+def modify_user(email: EmailStr, data: ChangeUserForm, _user=Depends(authenticated_admin)):
     """
     Modify the given user.
-
-    Users can modify themselves (but not their role), admin can change everyone, and writer can change non-admin.
+    Only admin can change users.
     """
-    if current_user.email != email:
-        check_role(current_user, Role.WRITER)
-    try:
-        u = User.get(User.email == email)
-    except User.DoesNotExist:
-        raise HTTPException(status_code=404, detail=f"User {email} does not exist")
-    if u.role == Role.ADMIN:
-        check_role(current_user, Role.ADMIN)
-    if data.global_role:
-        role = Role[data.global_role.upper()]
-        check_role(current_user, role)  # need at least same level
-        logging.info(f"Changing {email} to {role}")
-        u.global_role = role
-    if data.email:
-        u.email = data.email
-    if data.password:
-        u.password = hash_password(data.password)
-    u.save()
-    return {"email": u.email, "global_role": u.role and u.role.name}
+    role = Role[data.global_role.upper()]
+    set_global_role(email, role)
+    return {"email": email, "global_role": role.name}
 
 
-@app_users.post("/auth/token")
-def get_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    """Create a new token for the user authenticating with a form."""
-    user = auth.verify_user(email=form_data.username, password=form_data.password)
-    if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password")
-    token = user.create_token()
-    return {"access_token": token, "token_type": "bearer"}
-
-
-@app_users.get("/auth/token")
-def refresh_token(current_user: User = Depends(authenticated_user)):
-    """Create a new token for the user authenticated with an existing token."""
-    token = current_user.create_token()
-    return {"access_token": token, "token_type": "bearer"}
+@app_users.get("/config")
+@app_users.get("/middlecat")
+def get_auth_config():
+    return {"middlecat_url": get_settings().middlecat_url,
+            "resource": get_settings().host,
+            "authorization": get_settings().auth,
+            "warnings": [validate_settings()]}
