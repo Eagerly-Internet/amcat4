@@ -19,5 +19,5 @@ jobs:
 
     - name: Push Docker Image
       run: |
-        docker tag amcat4 ghcr.io/eagerly-internet/amcat4:latest
-        docker push ghcr.io/eagerly-internet/amcat4:latest
+        docker tag nlpo-amcat4 ghcr.io/eagerly-internet/nlpo-amcat4:latest
+        docker push ghcr.io/eagerly-internet/nlpo-amcat4:latest
