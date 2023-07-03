@@ -85,7 +85,7 @@ def coerce_type_to_elastic(value, ftype):
                  "constant_keyword",
                  "wildcard",
                  "url",
-                 "tag",
+#                 "tag", #fucks with array of strings upload
                  "text"]:
         value = str(value)
     elif ftype in ["long",
