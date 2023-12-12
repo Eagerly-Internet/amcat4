@@ -30,8 +30,9 @@ ES_MAPPINGS = {
    'id': {"type": "keyword", "meta": {"amcat4_type": "id"}},
    'text': {"type": "text"},
    'object': {"type": "object"},
-   'geo_point': {"type": "geo_point"}
-   }
+   'geo_point': {"type": "geo_point"},
+   'boolean': {"type": "boolean"}
+}
 
 DEFAULT_MAPPING = {
     'text': ES_MAPPINGS['text'],
