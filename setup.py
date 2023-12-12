@@ -4,7 +4,7 @@ from distutils.core import setup
 
 setup(
     name="amcat4",
-    version="4.0.10",
+    version="4.0.12",
     description="API for AmCAT4 Text Analysis",
     author="Wouter van Atteveldt",
     author_email="wouter@vanatteveldt.com",
@@ -26,21 +26,19 @@ setup(
         "authlib",
         "pydantic[email]",
         "pydantic-settings",
-        'uvicorn',
-        'requests'
+        "typing_extensions",
+        "uvicorn",
+        "requests",
+        "class_doc",
     ],
     extras_require={
-        'dev': [
-            'pytest',
-            'mypy',
-            'flake8',
-            'responses',
-            'pre-commit',
+        "dev": [
+            "pytest",
+            "mypy",
+            "flake8",
+            "responses",
+            "pre-commit",
         ]
     },
-    entry_points={
-        'console_scripts': [
-            'amcat4 = amcat4.__main__:main'
-        ]
-    },
+    entry_points={"console_scripts": ["amcat4 = amcat4.__main__:main"]},
 )
